@@ -1,79 +1,118 @@
-#include <stdlib.h>
-#include <stdio.h>
 
+#include <stdlib.h>
+//#include "utilities.h"
 #include "stack.h"
 
-#define MAX_STACK_HEIGHT 2048
+// the stack's storage
+static word stack[MAX_STACK_HEIGHT];
 
-struct Stack{
-    int array[MAX_STACK_HEIGHT]; 
-    int top; 
-}; 
+// index of NEXT free space
+static address sp;
 
-Stack_T make_stack(void){
-    Stack_T s = (Stack_T) malloc(sizeof(struct Stack)); 
-    s->top = -1; 
-    return s; 
+// first index of current AR
+static address bp;
+
+// Initialize the stack data structure
+void stack_initialize(){
+    sp = 0;
+    bp = 0;
+    for (address i = 0; i < MAX_STACK_HEIGHT; i++) {
+	    stack[i] = 0;
+    }
 }
 
-int is_empty(Stack_T s){
-    if (s->top == -1){
-        return 1;  
+// Return the stack's num. of elements
+// (SP value)
+address stack_SP(){
+    return sp; 
+}
+
+// Return the address of the base
+// of the current AR (BP value)
+address stack_BP(){
+    return bp; 
+}
+
+// Is the stack empty?
+bool stack_empty(){ 
+    return sp == 0;                  
+}
+
+// Is the stack full?
+bool stack_full() {
+    return sp == MAX_STACK_HEIGHT-1;
+}
+
+// Requires: !stack_full()
+// push a word on the stack
+void stack_push(word val) {
+    stack[sp++] = val;
+}
+
+// Requires: stack_size() + n
+//                  < MAX_STACK_HEIGHT
+// Increase the size of the stack by n
+void stack_allocate(int n){
+    int new_sp = sp + n;
+    if (!legal_stack_index(new_sp)) {
+	// report error
+    }
+    sp = new_sp;
+}
+
+// Requires: !stack_empty()
+// pop the stack and return the top elem
+word stack_pop() {
+    if (stack_empty()) {
+        // report error
+        exit(2);
+    } 
+    else {
+        return stack[--sp];  // or stack[sp--]; ???
+    }
+}
+
+// return the top element without popping
+word stack_top() {
+    if (stack_empty()) {
+        // report error
+        exit(2);
     }
     else {
-        return 0; 
+        return stack[sp-1];  // don't use -- here!
     }
 }
 
-int is_full(Stack_T s){
-    if (s->top >= MAX_STACK_HEIGHT){
-        return 1;  
-    }
-    else {
-        return 0; // this should return a halt condition flag
-    }
+void set_BP(int idx){
+    bp = idx; 
 }
 
-
-int pop(Stack_T s){
-    if (s->top != -1){
-        return (s->array[s->top--]); 
-    }
-    else {
-        // handle this halt condition 
-        return -999;  
-    }
+// Is the given address legal?
+bool legal_stack_index(address addr){
+    return addr < MAX_STACK_HEIGHT;
 }
 
-void push(Stack_T s, int val){
-    if (s->top < MAX_STACK_HEIGHT){
-        s->array[++(s->top)] = val; 
+// fetch the value from the given address
+word stack_fetch(address addr){
+    if (!legal_stack_index(addr)) {
+	// report error
     }
-    else {
-        // handle this halt contition 
+    return stack[addr];
+}
+
+// assign val to the given address, addr, on the stack
+void stack_assign(address addr, word val){
+    if (!legal_stack_index(addr)) {
+	// report error
     }
+    stack[addr] = val;
 }
 
-int top(Stack_T s)
-{
-    if(is_empty(s))
-        return -999; // INT_MIN should be used here
-    else
-        return s->array[s->top];
-}
-
-int get_value(Stack_T s, int go_to_position)
-{
-    if(is_empty(s))
-        return -999; // INT_MIN should be used here
-    else
-        return s->array[go_to_position];
-}
-
-void print_stack(Stack_T s){
+void print_stack(){
     printf("stack: "); 
-    for (int i = 0; i < (s->top + 1); i++){
-        printf("S[%d] : %d ", i,  s->array[i]); 
+    for (int i = bp; i < stack_SP(); i++){
+        printf("S[%d] : %d ", i,  stack[i]); 
     }
     printf("\n"); 
 }
+

@@ -1,15 +1,26 @@
-#ifndef STACK_H
-#define STACK_H
+#ifndef _STACK_H
+#define _STACK_H
 
-typedef struct Stack *Stack_T;
+#include <stdbool.h>
+#include <stdio.h>
+#include "machine_types.h"
 
-extern Stack_T make_stack(void);
-extern int is_empty(Stack_T s); 
-extern int is_full(Stack_T s); 
-extern void push(Stack_T s, int val);
-extern int pop(Stack_T s);
-extern int top(Stack_T s); // Added to have get the # at top. Used in PSI instruction.
-extern int get_value(Stack_T s, int go_to_position); // Added to get # at position BP - o from the stack. Used in PRM and STO instructions.
-extern void print_stack(Stack_T s); 
+#define MAX_STACK_HEIGHT 2048
+
+// Initialize the stack data structure
+extern void stack_initialize();
+extern address stack_SP(); 
+extern address stack_BP(); 
+extern bool stack_empty(); 
+extern void set_BP(int idx);
+extern bool stack_full(); 
+extern void stack_push(word val); 
+extern void stack_allocate(int n); 
+extern word stack_pop(); 
+extern word stack_top(); 
+extern bool legal_stack_index(address addr); 
+extern word stack_fetch(address addr); 
+extern void stack_assign(address addr, word val); 
+extern void print_stack(); 
 
 #endif

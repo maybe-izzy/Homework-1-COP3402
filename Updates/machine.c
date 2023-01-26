@@ -1,484 +1,195 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "machine.h"
+#include "machine_types.h"
 #include "stack.h"
 
 #define MAX_CODE_LENGTH 512
+#define NUM_OPCODES 27 
 
-int INSTRUCTION_COUNT = 0; 
-int SP = 0; // Stack pointer    
-int PC = 0; // Program counter  
-int BP = 0; // Base pointer
+static const char *mnemonics[NUM_OPCODES] =
+    {"LIT", "RTN", "CAL", "POP", "PSI",
+     "PRM", "STO", "INC", "JMP", "JPC",
+     "CHO", "CHI", "HLT ", "NDB", "NEG",
+     "ADD", "SUB", "MUL", "DIV", "MOD", 
+     "EQL", "NEQ", "LSS", "LEQ", "GTR", 
+     "GEQ", "PSP"
+    };
 
 struct Instruction{
     int op; 
     int m; 
 };
 
-void trace(Stack_T stack){
-    printf("PC: %d BP: %d SP: %d\n", PC, BP, SP); 
-    print_stack(stack); 
+Instruction_T instruction_array[MAX_CODE_LENGTH]; 
+int INSTRUCTION_COUNT = 0; 
+int PC = 0; 
+int print_debug = 1;
+int halt = 0; 
+
+// Is the argument a legal op code for the machine?
+static bool legal_op_code(int op)
+{
+    return 0 <= op && op < NUM_OPCODES;
 }
 
-/* Prints out decoded program memnonic */
-void print_memnonic(Instruction_T instruction){    
-    switch (instruction.op){
-        case (1): 
-            printf("LIT");
-            break;  
-        case (2): 
-            printf("RTN"); 
-            break;
-        case (3): 
-            printf("CAL");
-            break;  
-        case (4): 
-            printf("POP"); 
-            break;
-        case (5): 
-            printf("PSI");
-            break;  
-        case (6): 
-            printf("PRM"); 
-            break;
-        case (7): 
-            printf("STO");
-            break;  
-        case (8): 
-            printf("INC"); 
-            break;
-        case (9): 
-            printf("JMP");
-            break;  
-        case (10): 
-            printf("JPC"); 
-            break; 
-        case (11): 
-            printf("CHO");
-            break;  
-        case (12): 
-            printf("CHI"); 
-            break;
-        case (13): 
-            printf("HLT");
-            break;  
-        case (14): 
-            printf("NDB"); 
-            break;
-        case (15): 
-            printf("NEG");
-            break;  
-        case (16): 
-            printf("ADD"); 
-            break; 
-        case (17): 
-            printf("SUB");
-            break;  
-        case (18): 
-            printf("MUL"); 
-            break;
-        case (19): 
-            printf("DIV");
-            break;  
-        case (20): 
-            printf("MOD"); 
-            break;
-        case (21): 
-            printf("EQL");
-            break;  
-        case (22): 
-            printf("NEQ"); 
-            break; 
-        case (23): 
-            printf("LSS");
-            break;  
-        case (24): 
-            printf("LEQ"); 
-            break;
-        case (25): 
-            printf("GTR");
-            break;  
-        case (26): 
-            printf("GEQ"); 
-            break;
-        case (27): 
-            printf("PSP"); 
-            break;
-    } 
+// Requires: legal_op_code(op);
+// Return the ASCII mnemonic for the op code given.
+static const char *get_mnemonic(int op){
+    if (!legal_op_code(op)) {
+	    // Error handling 
+        exit(2); 
+    }
+    return mnemonics[op - 1];
 }
 
+void print_instructions(){
+    printf("%-5s %-5s %-5s", "Addr", "OP", "M"); 
+    for (int i = 0; i < INSTRUCTION_COUNT; i++){
+        printf("\n%-5d %-5s %-5d", i, get_mnemonic(instruction_array[i].op), instruction_array[i].m); 
+    }
+}
 
 /* Processes program instructions from text file into an array of instructions */
-Instruction_T *get_instructions(char *filename){
-    Instruction_T *instruction_array = (Instruction_T*) malloc(MAX_CODE_LENGTH * sizeof(struct Instruction)); 
+void get_instructions(char *filename){
     FILE *fp = fopen(filename, "r"); 
     int i = 0; 
+    int num_read; 
+    int stop_reading = 0; 
+    int op;
+    int m;
 
-    while (!feof(fp)){  
-        fscanf(fp, "%d %d", &instruction_array[i].op, &instruction_array[i].m); 
-        i++; 
-        INSTRUCTION_COUNT++; 
+    while(stop_reading != 1){
+        num_read = fscanf(fp, "%d %d\n", &op, &m);
+        if (!legal_op_code(op) || num_read < 2) {
+	        stop_reading = 1;
+        }
+        else {
+            instruction_array[i].op = op; 
+            instruction_array[i].m = m; 
+            i++; 
+            INSTRUCTION_COUNT++; 
+        }  
     }
-    fclose(fp);      
 
-    return instruction_array; 
+    fclose(fp);      
 }
 
-/* Handle instructions */
-void process_instructions(Instruction_T *instruction_array, Stack_T stack){
-    printf("\nTracing...\n");
-    trace(stack); 
-    for (int i = 0; i < INSTRUCTION_COUNT; i++){
-        
-
-        // Output specific instruction info 
-        printf("==> addr: %d\t", i); 
-        print_memnonic(instruction_array[i]);
-        printf("\t%d\n", instruction_array[i].m); 
-
-        execute_instruction(instruction_array[PC], stack); // Do some halt condition handling 
-
-        trace(stack); // Print initial state  
+void trace(){
+    if (print_debug){
+        printf("PC: %d BP: %d SP: %d\n", PC, stack_BP(), stack_SP());  
+        print_stack(); 
     }
 }
 
 /* Execute a given instruction using the stack memory */
-void execute_instruction(Instruction_T instruction, Stack_T stack){
-    
+void execute_instruction(Instruction_T instruction){
+    int op1; 
+    int op2; 
+
     // Decode the instructions 
-    if (instruction.op == 1){ 
-        // Literal push: stack[SP] ← n; SP ← SP + 1
-        push(stack, instruction.m);
-        SP++;
-        PC++;
+    if (instruction.op == 1){ // LIT
+        stack_push(instruction.m);
     }
-    else if (instruction.op == 2){ // -----------------------------FIXMEE: Address needs to be updated in here. May be address should
-                                   // be a global variable
+    else if (instruction.op == 2){ // RTN
+
+    }
+    else if (instruction.op == 3){ // CAL
+        int new_BP = stack_SP(); 
+        int old_BP = stack_BP(); 
+
+        set_BP(new_BP); 
+        stack_push(old_BP);
+        stack_push(PC); 
+        PC = instruction.m; 
+    }
+    else if (instruction.op == 4){ // POP
+        stack_pop(); 
+    }
+    else if (instruction.op == 5){ // PSI
+        stack_pop();
+        stack_push(stack_top()); 
+    }
+    else if (instruction.op == 6){ // PRM 
+
+    }
+    else if (instruction.op == 7){ // STO
         
-        // Returns from a subroutine and restores the caller’s AR:
-        // PC ← stack[SP − 1]; BP ← stack[SP − 2]; SP ← SP − 2
+
+    }
+    else if (instruction.op == 8){ // INC
+        stack_allocate(instruction.m); 
+    }
+    else if (instruction.op == 9){ // JMP
+        PC = stack_pop(); 
+    }
+    else if (instruction.op == 10){ // JPC
+        op1 = stack_pop(); 
+        if (op1 != 0){
+            PC = instruction.m; 
+        }
+    }
+    else if (instruction.op == 11){// CHO 
+        putc(stack_pop(), stdout); 
+    }
+    else if (instruction.op == 13){ // HLT
+        halt = 1; 
+    }
+    else if (instruction.op == 14){ // NDB
+        print_debug = 0; 
+    }
+    else if (instruction.op == 15){
+        stack_push(stack_pop() * -1); 
+    }
+    else if (instruction.op == 16){ // ADD
+        op1 = stack_pop(); 
+        op2 = stack_pop(); 
+        stack_push(op2 + op1);
+    }
+    else if (instruction.op == 17){ // SUB
+        op1 = stack_pop(); 
+        op2 = stack_pop(); 
+        stack_push(op1 - op2);
+    }
+    else if (instruction.op == 18){ // MUL
+        stack_push(stack_pop() * stack_pop()); 
+    }
+    else if (instruction.op == 21){ // EQL
+        stack_push(stack_pop() == stack_pop()); 
+    }
+    else if (instruction.op == 22){ // NEQ
+        op1 = stack_pop(); 
+        op2 = stack_pop(); 
+        if (op1 == op2){
+            stack_push(0); 
+        }
+        else {
+            stack_push(1); 
+        }
+    }
+    else if (instruction.op == 22){ // LSS
+        op1 = stack_pop(); 
+        op2 = stack_pop(); 
         
-        PC = pop(stack); // Top of stack holds the return address to the previous AR
-        BP = pop(stack); // The value at SP − 2 should be zero.
-        SP -= 2; // This will have the SP point the top of the previous AR.
- 
-    }
-    else if (instruction.op == 3){ // -----FIXMEE: Needs to print last two elements of the stack
-                                  // The address needs to be updated here.
-        
-        // Call the procedure at code index p, generating a new activation record
-        // and setting PC to p: stack[SP] ← BP; (dynamic link)
-        // stack[SP + 1] ← PC; (return address)
-        // BP ← SP; SP ← SP + 2; PC ← p;
-
-        PC = instruction.m;
-        BP = SP;
-        push(stack, 0);
-        push(stack, (SP-1));
-        SP = SP + 2;
-    }
-    else if (instruction.op == 4){ 
-        // Pop the stack: SP ← SP − 1;
-        
-        pop(stack);
-        SP--;
-        PC++; 
-    }
-    else if (instruction.op == 5){ 
-        // Push the element at address stack[SP − 1] on top of the stack:
-        // stack[SP − 1] ← stack[stack[SP − 1]]
-
-        push(stack, top(stack));
-        PC++;
-        SP++;
-        
-         
-    }
-    else if (instruction.op == 6){ 
-        // Parameter at stack[BP − o] is pushed on the stack:
-        // stack[SP] ← stack[BP − o]; SP ← SP + 1
-
-        push(stack, get_value(stack, BP - instruction.m));
-        PC++;
-        SP++;
-         
-    }
-    else if (instruction.op == 7){ 
-        // Store stack[SP − 2] into the stack at address stack[SP − 1] + o and pop
-        // the stack twice:
-        // stack[stack[SP − 1] + o] ← stack[SP − 2]; SP ← SP − 2
-        
-        //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< WORKING HERE!!!! 1_26_23 at 11:37 am <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        PC++;
-        SP -= 2;
-         
-    }
-    else if (instruction.op == 8){ 
-        // Allocate m locals on the stack: SP ← SP + m
-        
-        int i = 0;
-        while(i < instruction.m)
-        {    
-            push(stack, 0);
-            i++;
-            SP++;
-        }
-        PC++;
-    }
-    else if (instruction.op == 9){
-        // Jump to the address in stack[SP − 1] and pop:
-        // PC ← stack[SP − 1]; SP ← SP − 1
-    }
-    else if (instruction.op == 10){
-        // Jump conditionally: if the value in stack[SP − 1] is not 0, then jump to
-        // a and pop the stack:
-        // if stack[SP − 1] ̸= 0 then {PC ← a} ; SP ← SP − 1
-
-    }
-    else if (instruction.op == 11){
-        // Output of the value in stack[SP − 1] to standard output as a character
-        // and pop:
-        // putc(stack[SP − 1], stdout); SP ← SP − 1
-        
-    }
-    else if (instruction.op == 12){
-        // Read an integer, as character value, from standard input and store it in
-        // the top of the stack, but on EOF or error, store -1:
-        // stack[SP] ← getc(stdin); SP ← SP − 1
-        
-    }
-    else if (instruction.op == 13){
-        // Halt the program’s execution
-    }
-    else if (instruction.op == 14){
-        // Stop printing debugging output   
-    }
-    else if (instruction.op == 15){ 
-        // Negate the value in the top of the stack
-        push(stack, (pop(stack) * -1));
-        PC++; 
-    }
-    else if (instruction.op == 16){
-        // Add the top two elements in the stack:
-        // stack[SP − 2] ← stack[SP − 1] + stack[SP − 2]; SP ← SP − 1
-        
-        int operand1 = pop(stack);
-        SP--;
-        int operand2 = pop(stack);
-        SP--;
-
-        int result = operand2 + operand1;
-
-        push(stack, result);
-        SP++;
-
-        PC++;
-    }
-    else if (instruction.op == 17){
-        // Subtract the 2nd to top element from the top one:
-        // stack[SP − 2] ← stack[SP − 1] − stack[SP − 2]; SP ← SP − 1
-
-        int operand1 = pop(stack);
-        SP--;
-        int operand2 = pop(stack);
-        SP--;
-
-        int result = operand2 - operand1;
-
-        push(stack, result);
-        SP++;
-
-        PC++;
-    }
-    else if (instruction.op == 18){
-        // Multiply the top two elements in the stack:
-        // stack[SP − 2] ← stack[SP − 1] × stack[SP − 2]; SP ← SP − 1
-
-        int operand1 = pop(stack);
-        SP--;
-        int operand2 = pop(stack);
-        SP--;
-
-        int result = operand2 * operand1;
-
-        push(stack, result);
-        SP++;
-
-        PC++;
-    }
-    else if (instruction.op == 19){
-        // Divide the top element by the 2nd from top element:
-        // stack[SP − 2] ← stack[SP − 1]/stack[SP − 2]; SP ← SP − 1
-
-        int operand1 = pop(stack);
-        SP--;
-        int operand2 = pop(stack);
-        SP--;
-
-        int result = operand2 / operand1;
-
-        push(stack, result);
-        SP++;
-
-        PC++;   
-    }
-    else if (instruction.op == 20){
-        // Modulo, result is the remainder of the top by the 2nd from top element
-        // of the stack:
-        // stack[SP − 2] ← stack[SP − 1]modstack[SP − 2]; SP ← SP − 1
-
-        int operand1 = pop(stack);
-        SP--;
-        int operand2 = pop(stack);
-        SP--;
-
-        int result = operand2 % operand1;
-
-        push(stack, result);
-        SP++;
-
-        PC++;
-    }
-    else if (instruction.op == 21){
-        // Are (the contents of) the top and 2nd from top element equal?
-        // stack[SP − 2] ← stack[SP − 1] = stack[SP − 2]; SP ← SP − 1
-
-        int operand1 = pop(stack);
-        SP--;
-        int operand2 = pop(stack);
-        SP--;
-
-        if(operand1 == operand2)
-        {
-            push(stack, 1);
-            SP++;
-        }
-        else
-        {
-            push(stack, 0);
-            SP++;
-        }
-        PC++;
-    }
-    else if (instruction.op == 22){
-        // Are (the contents of) the top and 2nd from top element different?
-        // stack[SP − 2] ← stack[SP − 1] ̸= stack[SP − 2]; SP ← SP − 1
-
-        int operand1 = pop(stack);
-        SP--;
-        int operand2 = pop(stack);
-        SP--;
-
-        if(operand1 != operand2)
-        {
-            push(stack, 1);
-            SP++;
-        }
-        else
-        {
-            push(stack, 0);
-            SP++;
-        }
-        PC++;
-    }
-    else if (instruction.op == 23){
-        // Is (the contents of) the top element strictly less than the 2nd from top
-        // element?
-        // stack[SP − 2] ← stack[SP − 1] < stack[SP − 2]; SP ← SP − 1
-
-        int operand1 = pop(stack);
-        SP--;
-        int operand2 = pop(stack);
-        SP--;
-
-        if(operand1 < operand2)
-        {
-            push(stack, 1);
-            SP++;
-        }
-        else
-        {
-            push(stack, 0);
-            SP++;
-        }
-        PC++;
-    }
-    else if (instruction.op == 24){
-        // Is (the contents of) the top element no greater than the 2nd from top
-        // element?
-        // stack[SP − 2] ← stack[SP − 1] ≤ stack[SP − 2]; SP ← SP − 1
-
-        int operand1 = pop(stack);
-        SP--;
-        int operand2 = pop(stack);
-        SP--;
-
-        if(operand1 <= operand2)
-        {
-            push(stack, 1);
-            SP++;
-        }
-        else
-        {
-            push(stack, 0);
-            SP++;
-        }
-        PC++;
-    }
-    else if (instruction.op == 25){
-        // Is (the contents of) the top element strictly greater than the 2nd from top?
-        // stack[SP − 2] ← stack[SP − 1] > stack[SP − 2]; SP ← SP − 1
-
-        int operand1 = pop(stack);
-        SP--;
-        int operand2 = pop(stack);
-        SP--;
-
-        if(operand1 > operand2)
-        {
-            push(stack, 1);
-            SP++;
-        }
-        else
-        {
-            push(stack, 0);
-            SP++;
-        }
-        PC++;
-    }
-    else if (instruction.op == 26){
-        // Is (the contents of) the top element no less than the contents of the 2nd
-        // from top element?
-        // stack[SP − 2] ← stack[SP − 1] ≥ stack[SP − 2]; SP ← SP − 1
-
-        int operand1 = pop(stack);
-        SP--;
-        int operand2 = pop(stack);
-        SP--;
-
-        if(operand1 >= operand2)
-        {
-            push(stack, 1);
-            SP++;
-        }
-        else
-        {
-            push(stack, 0);
-            SP++;
-        }
-        PC++;
-    }
-    else if (instruction.op == 27){
-        // Push SP (i.e., the address itself) on top of the stack:
-        // stack[SP] ← SP; SP ← SP + 1
-
-        push(stack, SP);
-        SP++; 
-
-        PC++; 
+        stack_push(op1 < op2); 
     }
     else {
         // Probably like a halt condition or something idk 
     }
-    
+}
+
+/* Handle instructions */
+void process_instructions(){
+    printf("\nTracing...\n"); 
+    trace();
+    for (int i = 0; i < INSTRUCTION_COUNT; i++){ 
+        if (print_debug){
+            printf("==> addr: %d     %s   %d    \n", PC, get_mnemonic(instruction_array[PC].op), instruction_array[PC].m); 
+        }
+        execute_instruction(instruction_array[PC++]); // Do some halt condition handling 
+        trace(); 
+        if (halt){
+            exit(0); 
+        }
+    }
 }
