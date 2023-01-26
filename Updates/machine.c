@@ -92,7 +92,7 @@ void execute_instruction(Instruction_T instruction){
         stack_push(instruction.m);
     }
     else if (instruction.op == 2){ // RTN
-
+	 
     }
     else if (instruction.op == 3){ // CAL
         int new_BP = stack_SP(); 
@@ -114,8 +114,10 @@ void execute_instruction(Instruction_T instruction){
 
     }
     else if (instruction.op == 7){ // STO
-        
+        op1 = stack_pop(); // SP-1
+        op2 = stack_pop(); // SP-2
 
+        stack_assign((op1 + instruction.m), op2);
     }
     else if (instruction.op == 8){ // INC
         stack_allocate(instruction.m); 
