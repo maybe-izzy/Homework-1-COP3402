@@ -1,13 +1,24 @@
-#ifndef STACK_H
-#define STACK_H
+#ifndef _STACK_H
+#define _STACK_H
 
-typedef struct Stack *Stack_T;
+#include <stdbool.h>
+#include <stdio.h>
 
-extern Stack_T make_stack(void);
-extern int is_empty(Stack_T s); 
-extern int is_full(Stack_T s); 
-extern void push(Stack_T s, int val);
-extern int pop(Stack_T s);
-extern void print_stack(Stack_T s); 
+#define MAX_STACK_HEIGHT 2048
+
+extern void stack_init();
+extern int stack_SP(); 
+extern int stack_BP(); 
+extern int stack_empty(); 
+extern void set_BP(int val);
+extern int stack_full(); 
+extern void stack_push(int val); 
+extern void stack_allocate(int n); 
+extern int stack_pop(); 
+extern int stack_top(); 
+extern int legal_stack_index(int addr); 
+extern int stack_fetch(int addr); 
+extern void stack_assign(int addr, int val); 
+extern void print_stack(); 
 
 #endif
